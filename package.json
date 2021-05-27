@@ -1,0 +1,36 @@
+{
+  "name": "ahj-ws-backend",
+  "version": "1.0.0",
+  "description": "Chat BackEnd",
+  "main": "index.js",
+  "scripts": {
+    "prestart": "npm install",
+    "start": "node index.js",
+    "start:dev": "nodemon index.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/valentin-panov/ahj-ws-backend.git"
+  },
+  "author": "Valentin Panov",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/valentin-panov/ahj-ws-backend/issues"
+  },
+  "homepage": "https://github.com/valentin-panov/ahj-ws-backend#readme",
+  "engines": {
+    "node": "14.x"
+  },
+  "dependencies": {
+    "@koa/cors": "^3.1.0",
+    "http": "*",
+    "koa": "^2.13.1",
+    "koa-body": "^4.2.0",
+    "koa-router": "^10.0.0",
+    "koa-websocket": "^6.0.0",
+    "nodemon": "^2.0.7",
+    "uuid": "^8.3.2",
+    "ws": "^7.4.5"
+  }
+}
