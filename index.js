@@ -10,13 +10,15 @@ const http = require('http');
 const WebSocket = require('ws');
 
 const idGenerator = require('./idGenerator');
+const formatDate = require('./formatDate');
 
 const app = new Koa();
 const router = new Router();
 const server = http.createServer(app.callback());
 const wsServer = new WebSocket.Server({ server });
 const port = process.env.PORT || 3000;
-const users = [];
+let users = [];
+const clients = new Set();
 
 router.post('/signup', async (ctx) => {
   if (
@@ -39,6 +41,7 @@ router.post('/signup', async (ctx) => {
     const newUser = {
       id: idGenerator(),
       name: login,
+      timeStamp: new Date(),
     };
     users.push(newUser);
     ctx.response.body = {
@@ -54,6 +57,8 @@ app
   .use(router.routes());
 
 wsServer.on('connection', function (ws) {
+  clients.add(ws);
+
   const usersList = JSON.stringify(
     users.map((entry) => ({ ...entry, id: undefined }))
   );
@@ -67,21 +72,39 @@ wsServer.on('connection', function (ws) {
       client.send(userListMsg);
     });
 
+  // const usersListClearIntevalId = setInterval(() => {
+  //   console.log('interviewing the interval:', users);
+  //   users = users.filter((entry) => {
+  //     const nowTime = new Date();
+  //     const differ = nowTime - entry.timeStamp;
+  //     console.log(nowTime, entry, differ);
+  //     return differ < 5000;
+  //   });
+  // }, 1000);
+
   ws.on('message', function (msg) {
     const { type, message, userId, time } = JSON.parse(msg);
     const user = users.find((entry) => entry.id === userId);
+    user.timeStamp = time;
 
-    if (type === 'send') {
-      const responseMsg = JSON.stringify({
-        type,
-        name: `${user.name}`,
-        message: `${message}`,
-        time,
+    if (type === 'logout') {
+      console.log('logout initiated');
+      const removeId = users.findIndex((entry) => entry.id === userId);
+      users.splice(removeId, 1);
+      const usersList = JSON.stringify(
+        users.map((entry) => ({ ...entry, id: undefined }))
+      );
+      const userListMsg = JSON.stringify({
+        type: 'userList',
+        users: usersList,
       });
       Array.from(wsServer.clients)
         .filter((client) => client.readyState === WebSocket.OPEN)
-        .forEach((client) => client.send(responseMsg));
+        .forEach((client) => {
+          client.send(userListMsg);
+        });
     }
+
     if (type === 'new') {
       const responseMsg = JSON.stringify({
         type: 'send',
@@ -92,17 +115,32 @@ wsServer.on('connection', function (ws) {
         .filter((client) => client.readyState === WebSocket.OPEN)
         .forEach((client) => client.send(responseMsg));
     }
-    if (type === 'logout') {
-      const removeId = users.findIndex((entry) => entry.id === userId);
-      users.splice(removeId, 1);
+
+    if (type === 'msg') {
+      // const usersList = JSON.stringify(
+      //   users.map((entry) => ({ ...entry, id: undefined }))
+      // );
+
+      const responseMsg = JSON.stringify({
+        type,
+        name: `${user.name}`,
+        message: `${message}`,
+        time: formatDate(time),
+        // usersList,
+      });
+      Array.from(wsServer.clients)
+        .filter((client) => client.readyState === WebSocket.OPEN)
+        .forEach((client) => client.send(responseMsg));
     }
   });
 
-  ws.on('close', function () {
-    console.log('loggedOut', ws);
-    // const removeId = users.findIndex((entry) => entry.id === userId);
-    // users.splice(removeId, 1);
-  });
+  // ws.on('close', function () {
+  //   console.log('loggedOut', ws);
+  //   clients.delete(ws);
+  //   clearInterval(usersListClearIntevalId);
+  //   // const removeId = users.findIndex((entry) => entry.id === userId);
+  //   // users.splice(removeId, 1);
+  // });
 });
 
 async function start() {
