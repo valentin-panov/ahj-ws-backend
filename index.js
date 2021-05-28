@@ -1,25 +1,22 @@
 const Koa = require('koa');
-const app = new Koa();
 
 const cors = require('@koa/cors');
 const koaBody = require('koa-body');
 
 const Router = require('koa-router');
-const router = new Router();
 
 const http = require('http');
-const server = http.createServer(app.callback());
 
 const WebSocket = require('ws');
-const wsServer = new WebSocket.Server({ server });
 
 const idGenerator = require('./idGenerator');
 
+const app = new Koa();
+const router = new Router();
+const server = http.createServer(app.callback());
+const wsServer = new WebSocket.Server({ server });
 const port = process.env.PORT || 3000;
 const users = [];
-
-app.use(cors());
-app.use(koaBody({ urlencoded: true, multipart: true, json: true }));
 
 router.post('/signup', async (ctx) => {
   if (
@@ -47,43 +44,64 @@ router.post('/signup', async (ctx) => {
     ctx.response.body = {
       state: 'ok',
       user: newUser,
-      users: users,
     };
   }
 });
 
-app.use(router.routes());
-const connections = [];
+app
+  .use(cors())
+  .use(koaBody({ urlencoded: true, multipart: true, json: true }))
+  .use(router.routes());
 
-wsServer.on('connection', function (ws, req) {
-  let user = {
-    connection: ws,
-  };
-
-  connections.push(user);
+wsServer.on('connection', function (ws) {
+  const usersList = JSON.stringify(
+    users.map((entry) => ({ ...entry, id: undefined }))
+  );
+  const userListMsg = JSON.stringify({
+    type: 'userList',
+    users: usersList,
+  });
+  Array.from(wsServer.clients)
+    .filter((client) => client.readyState === WebSocket.OPEN)
+    .forEach((client) => {
+      client.send(userListMsg);
+    });
 
   ws.on('message', function (msg) {
-    console.log(msg);
-    const type = JSON.parse(msg).type;
-    switch (type) {
-      case 'send':
-        for (let user of connections) {
-          user.connection.send(msg);
-        }
-        break;
-      case 'userList':
-        for (let user of connections) {
-          user.connection.send(
-            JSON.stringify({ type: 'userList', users: this.users })
-          );
-        }
-        break;
+    const { type, message, userId, time } = JSON.parse(msg);
+    const user = users.find((entry) => entry.id === userId);
+
+    if (type === 'send') {
+      const responseMsg = JSON.stringify({
+        type,
+        name: `${user.name}`,
+        message: `${message}`,
+        time,
+      });
+      Array.from(wsServer.clients)
+        .filter((client) => client.readyState === WebSocket.OPEN)
+        .forEach((client) => client.send(responseMsg));
+    }
+    if (type === 'new') {
+      const responseMsg = JSON.stringify({
+        type: 'send',
+        name: `ChatBot`,
+        message: `Подключился ${user.name}`,
+      });
+      Array.from(wsServer.clients)
+        .filter((client) => client.readyState === WebSocket.OPEN)
+        .forEach((client) => client.send(responseMsg));
+    }
+    if (type === 'logout') {
+      const removeId = users.findIndex((entry) => entry.id === userId);
+      users.splice(removeId, 1);
     }
   });
 
   ws.on('close', function () {
-    let id = connections.indexOf(user);
-    connections.splice(id, 1);
+    console.log('loggedOut', ws);
+    // const removeId = users.findIndex((entry) => entry.id === userId);
+    // users.splice(removeId, 1);
   });
 });
 
