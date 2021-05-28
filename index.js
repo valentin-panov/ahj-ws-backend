@@ -17,8 +17,8 @@ const router = new Router();
 const server = http.createServer(app.callback());
 const wsServer = new WebSocket.Server({ server });
 const port = process.env.PORT || 3000;
-let users = [];
-const clients = new Set();
+const users = [];
+// const clients = new Set();
 
 router.post('/signup', async (ctx) => {
   if (
@@ -56,9 +56,7 @@ app
   .use(koaBody({ urlencoded: true, multipart: true, json: true }))
   .use(router.routes());
 
-wsServer.on('connection', function (ws) {
-  clients.add(ws);
-
+wsServer.on('connection', (ws) => {
   const usersList = JSON.stringify(
     users.map((entry) => ({ ...entry, id: undefined }))
   );
@@ -66,21 +64,11 @@ wsServer.on('connection', function (ws) {
     type: 'userList',
     users: usersList,
   });
-  Array.from(wsServer.clients)
+  [...wsServer.clients]
     .filter((client) => client.readyState === WebSocket.OPEN)
     .forEach((client) => {
       client.send(userListMsg);
     });
-
-  // const usersListClearIntevalId = setInterval(() => {
-  //   console.log('interviewing the interval:', users);
-  //   users = users.filter((entry) => {
-  //     const nowTime = new Date();
-  //     const differ = nowTime - entry.timeStamp;
-  //     console.log(nowTime, entry, differ);
-  //     return differ < 5000;
-  //   });
-  // }, 1000);
 
   ws.on('message', function (msg) {
     const { type, message, userId, time } = JSON.parse(msg);
@@ -89,58 +77,39 @@ wsServer.on('connection', function (ws) {
 
     if (type === 'logout') {
       console.log('logout initiated');
+
       const removeId = users.findIndex((entry) => entry.id === userId);
       users.splice(removeId, 1);
+
       const usersList = JSON.stringify(
         users.map((entry) => ({ ...entry, id: undefined }))
       );
+
       const userListMsg = JSON.stringify({
         type: 'userList',
         users: usersList,
       });
-      Array.from(wsServer.clients)
+
+      [...wsServer.clients]
         .filter((client) => client.readyState === WebSocket.OPEN)
         .forEach((client) => {
           client.send(userListMsg);
         });
-    }
-
-    if (type === 'new') {
-      const responseMsg = JSON.stringify({
-        type: 'send',
-        name: `ChatBot`,
-        message: `Подключился ${user.name}`,
-      });
-      Array.from(wsServer.clients)
-        .filter((client) => client.readyState === WebSocket.OPEN)
-        .forEach((client) => client.send(responseMsg));
+      return;
     }
 
     if (type === 'msg') {
-      // const usersList = JSON.stringify(
-      //   users.map((entry) => ({ ...entry, id: undefined }))
-      // );
-
       const responseMsg = JSON.stringify({
         type,
         name: `${user.name}`,
         message: `${message}`,
         time: formatDate(time),
-        // usersList,
       });
-      Array.from(wsServer.clients)
+      [...wsServer.clients]
         .filter((client) => client.readyState === WebSocket.OPEN)
         .forEach((client) => client.send(responseMsg));
     }
   });
-
-  // ws.on('close', function () {
-  //   console.log('loggedOut', ws);
-  //   clients.delete(ws);
-  //   clearInterval(usersListClearIntevalId);
-  //   // const removeId = users.findIndex((entry) => entry.id === userId);
-  //   // users.splice(removeId, 1);
-  // });
 });
 
 async function start() {
