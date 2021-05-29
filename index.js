@@ -18,87 +18,68 @@ const server = http.createServer(app.callback());
 const wsServer = new WebSocket.Server({ server });
 const port = process.env.PORT || 3000;
 const users = [];
-// const clients = new Set();
 
-router.post('/signup', async (ctx) => {
-  if (
-    Object.keys(ctx.request.body).length === 0 &&
-    ctx.request.body.constructor === Object
-  ) {
-    ctx.response.body = {
-      state: 'error',
-      message: 'empty signup request',
-    };
-  }
-
-  const { login } = JSON.parse(ctx.request.body);
-  if (users.find((user) => user.name === login)) {
-    ctx.response.body = {
-      state: 'error',
-      message: 'Этот псевдоним занят',
-    };
-  } else {
-    const newUser = {
-      id: idGenerator(),
-      name: login,
-      timeStamp: new Date(),
-    };
-    users.push(newUser);
-    ctx.response.body = {
-      state: 'ok',
-      user: newUser,
-    };
-  }
-});
-
-app
-  .use(cors())
-  .use(koaBody({ urlencoded: true, multipart: true, json: true }))
-  .use(router.routes());
+app.use(cors()).use(koaBody({ urlencoded: true, multipart: true, json: true }));
 
 wsServer.on('connection', (ws) => {
-  const usersList = JSON.stringify(
-    users.map((entry) => ({ ...entry, id: undefined }))
-  );
-  const userListMsg = JSON.stringify({
-    type: 'userList',
-    users: usersList,
-  });
-  [...wsServer.clients]
-    .filter((client) => client.readyState === WebSocket.OPEN)
-    .forEach((client) => {
-      client.send(userListMsg);
-    });
-
   ws.on('message', function (msg) {
-    const { type, message, userId, time } = JSON.parse(msg);
-    const user = users.find((entry) => entry.id === userId);
-    user.timeStamp = time;
+    const user = users.find((entry) => entry.connection === ws);
 
-    if (type === 'logout') {
-      console.log('logout initiated');
+    const { type, message, userId, time, login } = JSON.parse(msg);
+    if (type === 'login') {
+      let responseMsg = {};
 
-      const removeId = users.findIndex((entry) => entry.id === userId);
-      users.splice(removeId, 1);
+      if (users.find((user) => user.name === login)) {
+        responseMsg = {
+          error: 'error',
+          name: 'ChatBot',
+          message: 'Этот псевдоним занят',
+          time: formatDate(new Date()),
+        };
+        ws.send(JSON.stringify(responseMsg));
+      } else {
+        // login success
 
-      const usersList = JSON.stringify(
-        users.map((entry) => ({ ...entry, id: undefined }))
-      );
+        const newUser = {
+          id: idGenerator(),
+          name: login,
+          connection: ws,
+        };
 
-      const userListMsg = JSON.stringify({
-        type: 'userList',
-        users: usersList,
-      });
+        users.push(newUser);
 
-      [...wsServer.clients]
-        .filter((client) => client.readyState === WebSocket.OPEN)
-        .forEach((client) => {
-          client.send(userListMsg);
+        const usersList = JSON.stringify(
+          users
+            .filter((user) => user.name)
+            .map((user) => ({
+              ...user,
+              id: undefined,
+              connection: undefined,
+            }))
+        );
+
+        responseMsg = {
+          state: 'loginTrue',
+          user: newUser,
+          usersList,
+        };
+
+        ws.send(JSON.stringify(responseMsg));
+
+        broadcast = JSON.stringify({
+          type: 'msg',
+          name: `ChatBot`,
+          message: `${newUser.name} has entered`,
+          time: formatDate(time),
+          usersList,
         });
-      return;
+        [...wsServer.clients]
+          .filter((client) => client.readyState === WebSocket.OPEN)
+          .forEach((client) => client.send(broadcast));
+      }
     }
 
-    if (type === 'msg') {
+    if (type === 'msg' && userId) {
       const responseMsg = JSON.stringify({
         type,
         name: `${user.name}`,
@@ -108,7 +89,33 @@ wsServer.on('connection', (ws) => {
       [...wsServer.clients]
         .filter((client) => client.readyState === WebSocket.OPEN)
         .forEach((client) => client.send(responseMsg));
+      return;
     }
+  });
+
+  ws.on('close', function () {
+    const name = users.find((user) => user.connection === ws).name;
+    const removeId = users.findIndex((user) => user.connection === ws);
+    users.splice(removeId, 1);
+
+    const usersList = JSON.stringify(
+      users.map((user) => ({ ...user, id: undefined, connection: undefined }))
+    );
+
+    const userListMsg = JSON.stringify({
+      type: 'msg',
+      name: `ChatBot`,
+      message: `${name} has left`,
+      time: formatDate(new Date()),
+      usersList,
+    });
+
+    [...wsServer.clients]
+      .filter((client) => client.readyState === WebSocket.OPEN)
+      .forEach((client) => {
+        client.send(userListMsg);
+      });
+    return;
   });
 });
 
