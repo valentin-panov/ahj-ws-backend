@@ -94,28 +94,32 @@ wsServer.on('connection', (ws) => {
   });
 
   ws.on('close', function () {
-    const name = users.find((user) => user.connection === ws).name;
-    const removeId = users.findIndex((user) => user.connection === ws);
-    users.splice(removeId, 1);
+    try {
+      const name = users.find((user) => user.connection === ws).name;
+      const removeId = users.findIndex((user) => user.connection === ws);
+      users.splice(removeId, 1);
 
-    const usersList = JSON.stringify(
-      users.map((user) => ({ ...user, id: undefined, connection: undefined }))
-    );
+      const usersList = JSON.stringify(
+        users.map((user) => ({ ...user, id: undefined, connection: undefined }))
+      );
 
-    const userListMsg = JSON.stringify({
-      type: 'msg',
-      name: `ChatBot`,
-      message: `${name} has left`,
-      time: formatDate(new Date()),
-      usersList,
-    });
-
-    [...wsServer.clients]
-      .filter((client) => client.readyState === WebSocket.OPEN)
-      .forEach((client) => {
-        client.send(userListMsg);
+      const userListMsg = JSON.stringify({
+        type: 'msg',
+        name: `ChatBot`,
+        message: `${name} has left`,
+        time: formatDate(new Date()),
+        usersList,
       });
-    return;
+
+      [...wsServer.clients]
+        .filter((client) => client.readyState === WebSocket.OPEN)
+        .forEach((client) => {
+          client.send(userListMsg);
+        });
+      return;
+    } catch (e) {
+      console.error(e.message);
+    }
   });
 });
 
